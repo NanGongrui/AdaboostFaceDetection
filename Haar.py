@@ -1,265 +1,104 @@
-import cv2 as cv
 import numpy as np
+import cv2 as cv
 
 
-def GetIntegralImage(image):
-    size = image.shape
-    IntegralImage = np.zeros_like(image)
-    s = np.zeros_like(image)
-    for i in range(0, size[0]):
-        for j in range(0, size[1]):
-            if i == 0:
-                s[i, j] = image[i, j]
-            else:
-                s[i, j] = s[i - 1, j] + image[i, j]
-            if j == 0 and i == 0:
-                IntegralImage[i, j] = image[i, j]
-            elif j == 0:
-                IntegralImage[i, j] = IntegralImage[i - 1, j] + image[i, j]
-            else:
-                IntegralImage[i, j] = IntegralImage[i, j - 1] + s[i, j]
-    return IntegralImage
+def CalIntegral(image, num, h, w):
+    '''
+    求积分图
+    '''
+    image = image.astype(int)
+    Integral = np.zeros_like(image)
+    for i in range(num):
+        Integral[i, 0, 0] = image[i, 0, 0] # 第一个元素
+        for j in range(1, h): # 最左边一列的元素
+            Integral[i, j, 0] = Integral[i, j-1, 0] + image[i, j, 0]
+        for j in range(1, w): # 最上面一行的元素
+            Integral[i, 0, j] = Integral[i, 0, j-1] + image[i, 0, j]
+        for j in range(1, h): # 剩下的元素
+            for k in range(1, w):
+                Integral[i, j, k] = Integral[i, j-1, k] + Integral[i, j, k-1] + image[i, j, k] - Integral[i, j-1, k-1]
+    return Integral
 
-'''
-Haar特征
-1. 1    2. 1 -1     3. 1     4. 1 -1 1     5. 1 -1
-  -1                  -1                     -1  1
-                       1
-1 2 边缘特征
-3 4 线性特征
-5   方向特征
-'''
-
-def cal_feature1(integralimage, position):
-    x1 = position[0] - 1
-    y1 = position[1] - 1
-    x2 = position[2]
-    y2 = position[3]
-    m = int(y1 + (y2 - y1) / 2)
-    if x1 < 0 and y1 < 0:
-        ii1 = 0
-        ii2 = 0
-        ii3 = 0
-        ii4 = integralimage[m, x2]
-        ii5 = 0
-        ii6 = integralimage[y2, x2]
-    elif x1 < 0:
-        ii1 = 0
-        ii2 = integralimage[y1, x2]
-        ii3 = 0
-        ii4 = integralimage[m, x2]
-        ii5 = 0
-        ii6 = integralimage[y2, x2]
-    elif y1 < 0:
-        ii1 = 0
-        ii2 = 0
-        ii3 = integralimage[m, x1]
-        ii4 = integralimage[m, x2]
-        ii5 = integralimage[y2, x1]
-        ii6 = integralimage[y2, x2]
+def CalInteValue(Integral, x1, y1, x2, y2):
+    '''
+    计算一个窗口的积分值
+    '''
+    if x1 == 0 and y1 == 0:
+        InteValue = Integral[y2, x2]
+    elif y1 == 0:
+        InteValue = Integral[y2, x2] - Integral[y2, x2-1]
+    elif x1 == 0:
+        InteValue = Integral[y2, x2] - Integral[y2-1, x2]
     else:
-        ii1 = integralimage[y1, x1]
-        ii2 = integralimage[y1, x2]
-        ii3 = integralimage[m, x1]
-        ii4 = integralimage[m, x2]
-        ii5 = integralimage[y2, x1]
-        ii6 = integralimage[y2, x2]
-    return ii4-ii2-ii3+ii1-ii6+ii4+ii5-ii3
+        InteValue = Integral[y2, x2] + Integral[y2-1, x2-1] - Integral[y2-1, x2] - Integral[y2, x2-1]
+    return InteValue
 
-def cal_feature2(integralimage, position):
-    x1 = position[0] - 1
-    y1 = position[1] - 1
-    x2 = position[2]
-    y2 = position[3]
-    m = int(x1 + (x2 - x1) / 2)
-    if x1 < 0 and x2 < 0:
-        ii1 = 0
-        ii2 = 0
-        ii3 = 0
-        ii4 = 0
-        ii5 = integralimage[y2, m]
-        ii6 = integralimage[y2, x2]
-    elif x1 < 0:
-        ii1 = 0
-        ii2 = integralimage[y1, m]
-        ii3 = integralimage[y1, x2]
-        ii4 = 0
-        ii5 = integralimage[y2, m]
-        ii6 = integralimage[y2, x2]
-    elif y1 < 0:
-        ii1 = 0
-        ii2 = 0
-        ii3 = 0
-        ii4 = integralimage[y2, x1]
-        ii5 = integralimage[y2, m]
-        ii6 = integralimage[y2, x2]
-    else:
-        ii1 = integralimage[y1, x1]
-        ii2 = integralimage[y1, m]
-        ii3 = integralimage[y1, x2]
-        ii4 = integralimage[y2, x1]
-        ii5 = integralimage[y2, m]
-        ii6 = integralimage[y2, x2]
-    return ii5-ii2-ii4+ii1-ii6+ii3+ii5-ii2
+def CalHaarValue(Integral, x1, y1, x2, y2, s, t):
+    '''
+    计算不同Haar特征的特征值
+    '''
+    if s == 1 and t == 2: # 两矩形特征
+        m = int(y1 + (y2 - y1) / 2)
+        white = CalInteValue(Integral, x1, y1, x2, m)
+        black = CalInteValue(Integral, x1, m+1, x2, y2)
+        print(white, ' ', black)
+        return white - black
+    elif s == 2 and t == 1: # 两矩形特征
+        m = int(x1 + (x2 - x1) / 2)
+        white = CalInteValue(Integral, x1, y1, m, y2)
+        black = CalInteValue(Integral, m+1, y1, x2, y2)
+        return white - black
+    elif s == 1 and t == 3: # 三矩形特征
+        m1 = int(y1 + (y2 - y1 + 1) / 3 - 1)
+        m2 = int(y1 + 2 * (y2 - y1 + 1) / 3 - 1)
+        white1 = CalInteValue(Integral, x1, y1, x2, m1)
+        black = CalInteValue(Integral, x1, m1+1, x2, m2)
+        white2 = CalInteValue(Integral, x1, m2+1, x2, y2)
+        return white1 + white2 - black
+    elif s == 3 and t == 1: # 三矩形特征
+        m1 = int(x1 + (x2 - x1 + 1) / 3 - 1)
+        m2 = int(x1 + 2 * (x2 - x1 + 1) / 3 - 1)
+        white1 = CalInteValue(Integral, x1, y1, m1, y2)
+        black = CalInteValue(Integral, m1+1, y1, m2, y2)
+        white2 = CalInteValue(Integral, m2+1, y1, x2, y2)
+        return white1 + white2 - black
+    else: # 四矩形特征
+        my = int(y1 + (y2 - y1) / 2)
+        mx = int(x1 + (x2 - x1) / 2)
+        white1 = CalInteValue(Integral, x1, y1, mx, my)
+        white2 = CalInteValue(Integral, mx+1, my+1, x2, y2)
+        black1 = CalInteValue(Integral, mx+1, y1, x2, my)
+        black2 = CalInteValue(Integral, x1, my+1, mx, y2)
+        return white1 + white2 - black1 - black2
 
-def cal_feature3(integralimage, position):
-    x1 = position[0] - 1
-    y1 = position[1] - 1
-    x2 = position[2]
-    y2 = position[3]
-    m1 = int(y1 + (y2 - y1) / 3)
-    m2 = int(y1 + (y2 - y1) / 3 * 2)
-    if x1 < 0 and y1 < 0:
-        ii1 = 0
-        ii2 = 0
-        ii3 = 0
-        ii4 = integralimage[m1, x2]
-        ii5 = 0
-        ii6 = integralimage[m2, x2]
-        ii7 = 0
-        ii8 = integralimage[y2, x2]
-    elif x1 < 0:
-        ii1 = 0
-        ii2 = integralimage[y1, x2]
-        ii3 = 0
-        ii4 = integralimage[m1, x2]
-        ii5 = 0
-        ii6 = integralimage[m2, x2]
-        ii7 = 0
-        ii8 = integralimage[y2, x2]
-    elif y1 < 0:
-        ii1 = 0
-        ii2 = 0
-        ii3 = integralimage[m1, x1]
-        ii4 = integralimage[m1, x2]
-        ii5 = integralimage[m2, x1]
-        ii6 = integralimage[m2, x2]
-        ii7 = integralimage[y2, x1]
-        ii8 = integralimage[y2, x2]
-    else:
-        ii1 = integralimage[y1, x1]
-        ii2 = integralimage[y1, x2]
-        ii3 = integralimage[m1, x1]
-        ii4 = integralimage[m1, x2]
-        ii5 = integralimage[m2, x1]
-        ii6 = integralimage[m2, x2]
-        ii7 = integralimage[y2, x1]
-        ii8 = integralimage[y2, x2]
-    return ii4-ii2-ii3+ii1-ii6+ii4+ii5-ii3+ii8-ii6-ii7+ii5
+def CalRectNum(s, t, h, w):
+    '''
+    计算满足条件的矩形个数
+    '''
+    num = 0
+    for i in range(h - t + 1):
+        for j in range(w - s + 1):
+            num += int((h - i) / t) * int((w - j) / s)
+    return num
 
-def cal_feature4(integralimage, position):
-    x1 = position[0] - 1
-    y1 = position[1] - 1
-    x2 = position[2]
-    y2 = position[3]
-    m1 = int(x1 + (x2 - x1) / 3)
-    m2 = int(x1 + (x2 - x1) / 3 * 2)
-    if x1 < 0 and y1 < 0:
-        ii1 = 0
-        ii2 = 0
-        ii3 = 0
-        ii4 = 0
-        ii5 = 0
-        ii6 = integralimage[y2, m1]
-        ii7 = integralimage[y2, m2]
-        ii8 = integralimage[y2, x2]
-    elif x1 < 0:
-        ii1 = 0
-        ii2 = integralimage[y1, m1]
-        ii3 = integralimage[y1, m2]
-        ii4 = integralimage[y1, x2]
-        ii5 = 0
-        ii6 = integralimage[y2, m1]
-        ii7 = integralimage[y2, m2]
-        ii8 = integralimage[y2, x2]
-    elif y1 < 0:
-        ii1 = 0
-        ii2 = 0
-        ii3 = 0
-        ii4 = 0
-        ii5 = integralimage[y2, x1]
-        ii6 = integralimage[y2, m1]
-        ii7 = integralimage[y2, m2]
-        ii8 = integralimage[y2, x2]
-    else:
-        ii1 = integralimage[y1, x1]
-        ii2 = integralimage[y1, m1]
-        ii3 = integralimage[y1, m2]
-        ii4 = integralimage[y1, x2]
-        ii5 = integralimage[y2, x1]
-        ii6 = integralimage[y2, m1]
-        ii7 = integralimage[y2, m2]
-        ii8 = integralimage[y2, x2]
-    return ii6-ii2-ii5+ii1-ii7+ii3+ii6-ii2+ii8-ii4-ii7+ii3
+def CalRectSum(h, w):
+    '''
+    计算所有矩形(特征)个数
+    '''
+    return 2 * CalRectNum(1, 2, h, w) + 2 * CalRectNum(1, 3, h, w) + CalRectNum(2, 2, h, w)
 
-def cal_feature5(integralimage, position):
-    x1 = position[0] - 1
-    y1 = position[1] - 1
-    x2 = position[2]
-    y2 = position[3]
-    mx = int(x1 + (x2 - x1) / 2)
-    my = int(y1 + (y2 - y1) / 2)
-    if x1 < 0 and y1 < 0:
-        ii1 = 0
-        ii2 = 0
-        ii3 = 0
-        ii4 = 0
-        ii5 = integralimage[my, mx]
-        ii6 = integralimage[my, x2]
-        ii7 = 0
-        ii8 = integralimage[y2, mx]
-        ii9 = integralimage[y2, x2]
-    elif x1 < 0:
-        ii1 = 0
-        ii2 = integralimage[y1, mx]
-        ii3 = integralimage[y1, x2]
-        ii4 = 0
-        ii5 = integralimage[my, mx]
-        ii6 = integralimage[my, x2]
-        ii7 = 0
-        ii8 = integralimage[y2, mx]
-        ii9 = integralimage[y2, x2]
-    elif y1 < 0:
-        ii1 = 0
-        ii2 = 0
-        ii3 = 0
-        ii4 = integralimage[my, x1]
-        ii5 = integralimage[my, mx]
-        ii6 = integralimage[my, x2]
-        ii7 = integralimage[y2, x1]
-        ii8 = integralimage[y2, mx]
-        ii9 = integralimage[y2, x2]
-    else:
-        ii1 = integralimage[y1, x1]
-        ii2 = integralimage[y1, mx]
-        ii3 = integralimage[y1, x2]
-        ii4 = integralimage[my, x1]
-        ii5 = integralimage[my, mx]
-        ii6 = integralimage[my, x2]
-        ii7 = integralimage[y2, x1]
-        ii8 = integralimage[y2, mx]
-        ii9 = integralimage[y2, x2]
-    return ii5-ii2-ii4+ii1-ii6+ii3+ii5-ii2-ii8+ii5+ii7-ii4+ii9-ii6-ii8+ii5
-
-def cal_feature(integralimage, position, type):
-    if type == 1:
-        return cal_feature1(integralimage, position)
-    elif type == 2:
-        return cal_feature2(integralimage, position)
-    elif type == 3:
-        return cal_feature3(integralimage, position)
-    elif type == 4:
-        return cal_feature4(integralimage, position)
-    elif type == 5:
-        return cal_feature5(integralimage, position)
-
-class HaarClssifier():
-    pass
 
 if __name__ == '__main__':
+    '''
+    用于调试
+    '''
     img = cv.imread('./test.png')
-    img1 = np.ones_like(cv.cvtColor(img, cv.COLOR_BGR2GRAY), dtype=np.int32)
+    img = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+    size = img.shape
+    img = img[np.newaxis, :, :]
     print(img.shape)
-    integralimage = GetIntegralImage(img1)
-    print(integralimage)
-    print(cal_feature(integralimage, [1, 1, 3, 3], 4))
+    Integral = CalIntegral(img, 1, size[0], size[1])
+    print(Integral[0])
+    print(CalHaarValue(Integral[0], 0, 0, 1, 1, 2, 2))
+    print(CalRectNum(2, 2, 24, 24))
+    print(CalRectSum(24, 24))
