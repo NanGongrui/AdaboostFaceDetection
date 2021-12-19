@@ -1,5 +1,4 @@
 import numpy as np
-import cv2 as cv
 
 
 def CalIntegral(image, num, h, w):
