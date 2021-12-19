@@ -20,10 +20,3 @@ def ReadImage(facepath, nonfacepath):
         img = cv.imread(name)[:, :, 0]
         data[i+num1, :, :] = img
     return data, num, num1
-
-
-if __name__ == '__main__':
-    data, num, num1 = ReadImage('./faces', './nonfaces')
-    print(data.shape)
-    print(num)
-    print(num1)

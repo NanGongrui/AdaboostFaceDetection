@@ -86,19 +86,3 @@ def CalRectSum(h, w):
     计算所有矩形(特征)个数
     '''
     return 2 * CalRectNum(1, 2, h, w) + 2 * CalRectNum(1, 3, h, w) + CalRectNum(2, 2, h, w)
-
-
-if __name__ == '__main__':
-    '''
-    用于调试
-    '''
-    img = cv.imread('./test.png')
-    img = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
-    size = img.shape
-    img = img[np.newaxis, :, :]
-    print(img.shape)
-    Integral = CalIntegral(img, 1, size[0], size[1])
-    print(Integral[0])
-    print(CalHaarValue(Integral[0], 0, 0, 1, 1, 2, 2))
-    print(CalRectNum(2, 2, 24, 24))
-    print(CalRectSum(24, 24))
