@@ -12,9 +12,9 @@ def Train():
     W = images.shape[2]
     # 2. 将图片转为积分图
     Integral = CalIntegral(images, num, H, W)
-    # 3. 训练初始化 确定WeakClassifier结构体的theta和p
+    # 3. 初始化训练 确定WeakClassifier结构体的theta和p
     WeakClassifiers, num_of_classifiers = TrainAllWeakClassifier(num, num1, Integral, H, W)
-    # 4. 训练
+    # 4. 后训练
     weight = np.ones((1, num)) * 1 / num # 初始化样本权重
     T = 300 # 训练迭代次数(选择300个弱分类器)
     OptClassifiers = [] # 保存每轮的最优弱分类器
@@ -123,17 +123,18 @@ def Test(StrongClassifiers, image_path):
     h = image.shape[0]
     w = image.shape[1]
     image = image[np.newaxis, :, :]
+    # 计算该测试图片的积分图
     Integral = CalIntegral(image, 1, h, w)
-    offset = 5
-    times = min(h / 20, w / 20)
-    box_list = []
-    for t in range(1, times + 1):
+    offset = 5 # 预测窗口每次移动的步长
+    times = min(h / 20, w / 20) # 预测窗口的最大放大倍数
+    box_list = [] # 用于保存检测框结果
+    for t in range(1, times + 1): # 遍历每个放大倍数对应的预测窗口
         for y1 in range(0, h - t * 20 + 1, offset): # 垂直方向的窗口滑动
             for x1 in range(0, w - t * 20 + 1, offset): # 水平方向的窗口滑动
-                rank = 0
-                for i in range(len(StrongClassifiers)):
+                rank = 0 # 该窗口的评分
+                for i in range(len(StrongClassifiers)): # 遍历级联强分类器
                     tmpout = 0 # 强分类器计算出的值 初始化为0
-                    for j in range(StrongClassifiers[i].weaknum):
+                    for j in range(StrongClassifiers[i].weaknum): # 遍历强分类器中的每个弱分类器
                         # 弱分类器根据当前的放大倍数来放大窗口
                         xx1 = x1 + (StrongClassifiers[i].weak[j].x1) * t
                         yy1 = y1 + (StrongClassifiers[i].weak[j].y1) * t
@@ -141,27 +142,29 @@ def Test(StrongClassifiers, image_path):
                         yy2 = yy1 + (StrongClassifiers[i].weak[j].y2 - StrongClassifiers[i].weak[j].y1) * t
                         # 计算弱分类器特征值
                         feature = CalHaarValue(Integral, xx1, yy1, xx2, yy2, StrongClassifiers[i].weak[j].s, StrongClassifiers[i].weak[j].t)
-                        # 弱分类器判断为人脸
+                        # 弱分类器判断为人脸 窗口变大 特征值的阈值也要扩大
                         if StrongClassifiers[i].weak[j].p * feature < StrongClassifiers[i].weak[j].p * StrongClassifiers[i].weak[j].theta * t * t:
                             tmpout += StrongClassifiers[i].weakweight[j]
                     # 强分类器判断为非人脸
                     if tmpout < StrongClassifiers[i].threshold:
                         break
-                    rank += tmpout
-                    if i == len(StrongClassifiers) - 1:
+                    rank += tmpout # 累加级联分类器的最终评分作为该检测框的评分
+                    if i == len(StrongClassifiers) - 1: # 所有强分类器都判断为人脸 那么该测试图片大概率是人脸 保存该检测框
                         box_list.append(Box([x1, y1, x1 + offset * t - 1, y1 + offset * t - 1], rank=rank))
     return box_list
 
 def Show(box_list, imagepath):
+    '''
+    展示测试结果
+    '''
     image = cv.imread(imagepath)
-    print(image.shape)
-    box_list = NMS(box_list, 0.01)
-    image = drawbox(image, box_list)
-    cv.imshow('face detection', image)
+    box_list = NMS(box_list, 0.01) # 非极大值抑制去除冗余检测框
+    image = drawbox(image, box_list) # 画出检测框
+    cv.imshow('face detection', image) # 展示图片
     cv.waitKey(0)
 
 
 if __name__ == '__main__':
-    StrongClassifiers = Train()
-    box_list = Test(StrongClassifiers, './1.jpg')
-    Show(box_list, './faces_test/1.jpg')
+    StrongClassifiers = Train() # 训练
+    box_list = Test(StrongClassifiers, './faces_test/1.jpg') # 测试
+    Show(box_list, './faces_test/1.jpg') # 展示测试结果
